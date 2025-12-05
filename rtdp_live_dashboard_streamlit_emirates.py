@@ -1,5 +1,5 @@
 
-# RTDP initiatives live dashboard (Emirates brand styling) — Streamlit cloud-ready.
+# RTDP initiatives Enhancements dashboard (Emirates brand styling) — Streamlit cloud-ready.
 # Place required files under ./data/ in your repo:
 #   - data/RTDP new initiatives.docx
 #   - data/Release dates.docx
@@ -21,7 +21,7 @@ from streamlit.errors import StreamlitSecretNotFoundError
 # -----------------------------
 # PAGE & BASIC CONFIG
 # -----------------------------
-st.set_page_config(page_title="RTDP Live Dashboard — Emirates", layout="wide")
+st.set_page_config(page_title="RTDP Enhancements Dashboard — Emirates", layout="wide")
 
 # Repo-relative locations (work in Streamlit Cloud)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -277,7 +277,7 @@ with c1:
         st.write("")  # spacer
 
 with c2:
-    st.title("RTDP Live Dashboard")
+    st.title("RTDP Enhancements Dashboard")
     st.caption(f"Updated: {datetime.now().strftime('%d %b %Y %H:%M')} • Source: data/RTDP new initiatives.docx")
 
 # Refresh button (supported API)
