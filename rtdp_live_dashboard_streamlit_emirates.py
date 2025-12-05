@@ -1,47 +1,50 @@
 
-# rtdp_live_dashboard_streamlit_emirates.py
-# RTDP initiatives live dashboard (Emirates brand styling).
-# Source: OneDrive Word doc; updates reflect on refresh.
+# RTDP initiatives live dashboard (Emirates brand styling) — Streamlit cloud-ready.
+# Place required files under ./data/ in your repo:
+#   - data/RTDP new initiatives.docx
+#   - data/Release dates.docx
+#   - data/emirates_logo.png (or any image; auto-detected)
 
 import os
 from typing import Optional, List, Tuple
 from datetime import datetime
+import html as html_module
 
 import numpy as np
 import pandas as pd
 import altair as alt
 import streamlit as st
-from docx import Document  # pip install python-docx
+from docx import Document            # pip install python-docx
 from docx.opc.exceptions import PackageNotFoundError
 from streamlit.errors import StreamlitSecretNotFoundError
-import html as html_module
 
 # -----------------------------
 # PAGE & BASIC CONFIG
 # -----------------------------
-st.set_page_config(page_title="RTDP Enhancements Dashboard — Emirates", layout="wide")
+st.set_page_config(page_title="RTDP Live Dashboard — Emirates", layout="wide")
 
-
+# Repo-relative locations (work in Streamlit Cloud)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DOC_PATH = os.path.join(BASE_DIR, "data", "RTDP new initiatives.docx")
-RELEASERELEASE_NOTE_FILE = os.path.join(BASE_DIR, "data", "Release dates.docx")
+DATA_DIR = os.path.join(BASE_DIR, "data")
 
+DOC_PATH = os.path.join(DATA_DIR, "RTDP new initiatives.docx")
+RELEASE_NOTE_FILE = os.path.join(DATA_DIR, "Release dates.docx")
+LOGO_DIR = DATA_DIR  # where your logo image lives
 
-# Optional secrets helper (no broad exceptions)
+# Optional secrets helper (specific exceptions; no broad excepts)
 def _get_secret(name: str, default: Optional[str]) -> Optional[str]:
     """Safely read a secret key; return default if secrets.toml is absent or key missing."""
     try:
-        val = st.secrets.get(name, default)  # may raise StreamlitSecretNotFoundError if secrets.toml missing
+        val = st.secrets.get(name, default)  # may raise StreamlitSecretNotFoundError
         return None if val is None else str(val)
     except StreamlitSecretNotFoundError:
         return default
     except (AttributeError, TypeError):
         return default
 
-EXCEL_PATH = _get_secret("EXCEL_PATH", "RTDP_Dashboard.xlsx")
+# Allow overriding via Streamlit secrets/env if you prefer
+EXCEL_PATH = _get_secret("EXCEL_PATH", os.path.join(DATA_DIR, "RTDP_Dashboard.xlsx"))
 LOGO_PATH  = _get_secret("LOGO_PATH", None)
-
-# Env overrides (optional)
 EXCEL_PATH = os.environ.get("RTDP_EXCEL_PATH", EXCEL_PATH)
 LOGO_PATH  = os.environ.get("RTDP_LOGO_PATH", LOGO_PATH)
 
@@ -51,9 +54,9 @@ LOGO_PATH  = os.environ.get("RTDP_LOGO_PATH", LOGO_PATH)
 PRIMARY_RED = "#D71A21"     # Emirates red
 ACCENT_GOLD = "#FEF8D5"
 TEXT_DARK   = "#333333"
-GREEN_OK    = "#2ECC71"     # Green for 'Delivered'
-AMBER_DEV   = "#F1C40F"     # Amber for 'In Development'
-BLUE_PLAN   = "#3498DB"     # Blue for 'Planned'
+GREEN_OK    = "#2ECC71"     # Delivered
+AMBER_DEV   = "#F1C40F"     # In Development
+BLUE_PLAN   = "#3498DB"     # Planned
 
 # -----------------------------
 # BRAND CSS
@@ -73,7 +76,7 @@ div[data-testid="stMetric"] > div {{
   border-radius:8px;
   border:1px solid rgba(215,26,33,0.15);
 }}
-/* Risk/info box */
+/* Info note box */
 .emirates-note {{
   border-left: 4px solid {PRIMARY_RED};
   background:#ffffff;
@@ -84,7 +87,7 @@ div[data-testid="stMetric"] > div {{
 .block-container {{
   padding-top: 0.75rem;
 }}
-/* Fix table column widths + prevent wrapping in Status column */
+/* Table layout + prevent wrapping in Status column */
 table.emirates-table {{
   width: 100%;
   border-collapse: collapse;
@@ -115,7 +118,7 @@ def find_logo_in_dir(folder: str) -> Optional[str]:
     """Find the first likely logo/image in the given directory."""
     if not os.path.isdir(folder):
         return None
-    exts = {".png", ".jpg",".svg", ".jpeg", ".gif", ".bmp", ".webp"}
+    exts = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
     names = sorted(os.listdir(folder))
     # prefer likely names first
     for prefix in ("emirates", "logo", "brand", "emirates_logo"):
@@ -150,7 +153,7 @@ def read_from_word(path: str) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=cols)
 
 def parse_release_mmyy(token: str) -> Tuple[int, int]:
-    """Parse a 'Dec25' style string to (year, month). Unknown → (9999, 99)."""
+    """Parse 'Dec25' → (2025, 12); unknown → (9999, 99)."""
     month_order = {"Jan":1,"Feb":2,"Mar":3,"Apr":4,"May":5,"Jun":6,"Jul":7,"Aug":8,"Sep":9,"Oct":10,"Nov":11,"Dec":12}
     if isinstance(token, str) and len(token) >= 5 and token[:3] in month_order:
         try:
@@ -162,7 +165,7 @@ def parse_release_mmyy(token: str) -> Tuple[int, int]:
     return 9999, 99
 
 def parse_version(token: str) -> Tuple[int, int, int]:
-    """Parse 'v8.1.0' to (8,1,0) for sorting. Non-version → (9999,99,99)."""
+    """Parse 'v8.1.0' → (8,1,0) for sorting; non-version → (9999,99,99)."""
     try:
         if token.startswith('v'):
             parts = token[1:].split('.')
@@ -175,22 +178,15 @@ def parse_version(token: str) -> Tuple[int, int, int]:
     return 9999, 99, 99
 
 def release_label(tr: str) -> str:
-    """
-    Label to show on chart:
-      - For versions: keep 'v8.x.x'
-      - For month-year tokens: keep as 'Dec25'
-      - For Delivered bucket: 'Delivered (v8.x)'
-    """
+    """Return label for chart (versions and month tokens as-is; special Delivered handled upstream)."""
     if tr is None:
         return "Unknown"
     t = str(tr).strip()
-    if t.startswith('v'):
-        return t
-    return t  # Dec25, Mar26, etc.
+    return t
 
 def build_release_domain(series: pd.Series) -> List[str]:
     """
-    Custom x-axis order (by "release number"):
+    Custom x-axis order ("release number" labels):
       1) 'Delivered (v8.x)' first (if present),
       2) Versions 'vX.Y.Z' ascending,
       3) Month-year tokens ascending (chronological).
@@ -216,13 +212,12 @@ def build_release_domain(series: pd.Series) -> List[str]:
     return ordered_domain
 
 def prepare(df: pd.DataFrame) -> pd.DataFrame:
-    """Standardize fields and add ReleaseLabel/ReleaseGroup/ReleaseDate and RiskFlag."""
+    """Standardize and add ReleaseLabel + RiskFlag (and optional ReleaseDate for info only)."""
     out = df.copy()
     out['Status'] = out['Status'].str.strip()
     out['RiskFlag'] = out['Target Release'].str.contains('Escalated', case=False, na=False)
     out['ReleaseLabel'] = out['Target Release'].map(release_label)
 
-    # Safe date mapping only when parseable
     def to_date(x):
         if pd.isna(x) or str(x).startswith('v'):
             return None
@@ -230,11 +225,11 @@ def prepare(df: pd.DataFrame) -> pd.DataFrame:
         return datetime(y, m, 1) if y != 9999 and m != 99 else None
 
     out['ReleaseGroup'] = out['ReleaseLabel']
-    out['ReleaseDate'] = out['Target Release'].map(to_date)
+    out['ReleaseDate'] = out['Target Release'].map(to_date)  # informational only
     return out
 
 def read_release_notes(note_path: str) -> Optional[str]:
-    """Read paragraphs and first table from 'Release dates.docx' into HTML note."""
+    """Read paragraphs + first table from 'Release dates.docx' into HTML note."""
     if not os.path.exists(note_path):
         return None
     try:
@@ -264,12 +259,12 @@ def read_release_notes(note_path: str) -> Optional[str]:
         return "<br/>".join(parts)
     except (PackageNotFoundError, OSError, ValueError):
         # If the Word file is missing/corrupt/unreadable, show a helpful message.
-        return "Release dates are maintained in 'Release dates.docx' in the RTDP priority folder."
+        return "Release dates are maintained in 'Release dates.docx' under the app's data folder."
 
 # -----------------------------
 # HEADER (spacer + logo + title) — smaller logo, no yellow deprecation note
 # -----------------------------
-# Pull down the header by ~1 cm
+# Pull down header by ~1 cm
 st.markdown("<div style='height:1cm'></div>", unsafe_allow_html=True)
 
 resolved_logo = LOGO_PATH if LOGO_PATH and os.path.exists(LOGO_PATH) else find_logo_in_dir(LOGO_DIR)
@@ -277,14 +272,13 @@ resolved_logo = LOGO_PATH if LOGO_PATH and os.path.exists(LOGO_PATH) else find_l
 c1, c2 = st.columns([0.7, 6.3])  # narrow logo column
 with c1:
     if resolved_logo:
-        # Fixed pixel width (no use_column_width) → no deprecation note
-        st.image(resolved_logo, width=120)
+        st.image(resolved_logo, width=120)  # fixed width; no use_column_width
     else:
         st.write("")  # spacer
 
 with c2:
-    st.title("RTDP Enhancements Dashboard")
-    st.caption(f"Updated: {datetime.now().strftime('%d %b %Y %H:%M')} • Source: Word document (OneDrive)")
+    st.title("RTDP Live Dashboard")
+    st.caption(f"Updated: {datetime.now().strftime('%d %b %Y %H:%M')} • Source: data/RTDP new initiatives.docx")
 
 # Refresh button (supported API)
 if st.sidebar.button("Refresh now"):
@@ -298,7 +292,7 @@ try:
 except (FileNotFoundError, ValueError, OSError) as e:
     st.warning(f"{e}\nFalling back to Excel if available…")
     try:
-        source_df = pd.read_excel(EXCEL_PATH, sheet_name='Initiatives', engine='openpyxl')
+        source_df = pd.read_excel(EXCEL_PATH, sheet_name='Initiatives')
     except (FileNotFoundError, ValueError, OSError, ImportError) as e2:
         st.error(f"Failed to load data: {e2}")
         st.stop()
@@ -364,19 +358,19 @@ badge_map = {
     'In Development': f"<span style='background:{AMBER_DEV};color:black;padding:4px 8px;border-radius:12px;'>In Development</span>",
     'Planned':        f"<span style='background:{BLUE_PLAN};color:white;padding:4px 8px;border-radius:12px;'>Planned</span>",
 }
+
 display_df = filtered_df.copy()
 display_df['Status Badge'] = display_df['Status'].map(lambda s: badge_map.get(s, s))
 
 def row_html(row):
-    # tint delivered rows very lightly
     bg = "background-color: rgba(46, 204, 113, 0.10);" if row['Status'] == 'Delivered' else ""
     return (
         f"<tr style='{bg}'>"
-        f"<td>{row['Initiative']}</td>"
+        f"<td>{html_module.escape(str(row['Initiative']))}</td>"
         f"<td class='status-cell'>{row['Status Badge']}</td>"
-        f"<td>{row['ReleaseLabel']}</td>"
-        f"<td>{row['Purpose / Impact']}</td>"
-        f"<td>{row['Solution']}</td>"
+        f"<td>{html_module.escape(str(row['ReleaseLabel']))}</td>"
+        f"<td>{html_module.escape(str(row['Purpose / Impact']))}</td>"
+        f"<td>{html_module.escape(str(row['Solution']))}</td>"
         f"</tr>"
     )
 
@@ -405,7 +399,7 @@ note_html = read_release_notes(RELEASE_NOTE_FILE)
 if note_html:
     st.markdown("<div class='emirates-note'><strong>Release Dates:</strong><br/>" + note_html + "</div>", unsafe_allow_html=True)
 else:
-    st.markdown("<div class='emirates-note'>Release dates file not found in the RTDP priority folder.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='emirates-note'>Release dates file not found in the app's data folder.</div>", unsafe_allow_html=True)
 
 # -----------------------------
 # EXPORT
