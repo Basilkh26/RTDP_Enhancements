@@ -21,9 +21,11 @@ import html as html_module
 # -----------------------------
 st.set_page_config(page_title="RTDP Enhancements Dashboard — Emirates", layout="wide")
 
-DOC_PATH = r"C:\Users\S435603\OneDrive - Emirates Group\Desktop\RTDP priority\RTDP new initiatives.docx"
-LOGO_DIR = r"C:\Users\S435603\OneDrive - Emirates Group\Desktop\RTDP priority"
-RELEASE_NOTE_FILE = os.path.join(LOGO_DIR, "Release dates.docx")  # note file in same folder
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DOC_PATH = os.path.join(BASE_DIR, "data", "RTDP new initiatives.docx")
+RELEASERELEASE_NOTE_FILE = os.path.join(BASE_DIR, "data", "Release dates.docx")
+
 
 # Optional secrets helper (no broad exceptions)
 def _get_secret(name: str, default: Optional[str]) -> Optional[str]:
